@@ -52,11 +52,7 @@ def generate_launch_description():
         output="screen",
         arguments=[
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
-            "/world/default/model/rotary_inverted_pendulum/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model",
             "/world/default/control@ros_gz_interfaces/srv/ControlWorld",
-        ],
-        remappings=[
-            ("/world/default/model/rotary_inverted_pendulum/joint_state", "/joint_states"),
         ],
     )
 

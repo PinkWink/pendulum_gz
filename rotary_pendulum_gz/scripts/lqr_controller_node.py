@@ -33,6 +33,7 @@ class LqrControllerNode(Node):
         self.create_subscription(Float64, "/rotary_pendulum/pole_angular_velocity", self.pole_vel_cb, 20)
 
         self.create_timer(1.0 / self.control_rate_hz, self.control_loop)
+        self.create_timer(1.0, self.status_log_loop)
         self.get_logger().info(
             f"LQR controller started. K={self.k}, voltage_limit={self.voltage_limit}, rate={self.control_rate_hz}Hz"
         )
@@ -64,6 +65,20 @@ class LqrControllerNode(Node):
         msg = Float64()
         msg.data = u
         self.voltage_cmd_pub.publish(msg)
+
+    def status_log_loop(self) -> None:
+        missing = []
+        if self.arm_angle is None:
+            missing.append("arm_angle")
+        if self.arm_vel is None:
+            missing.append("arm_angular_velocity")
+        if self.pole_angle is None:
+            missing.append("pole_angle")
+        if self.pole_vel is None:
+            missing.append("pole_angular_velocity")
+
+        if missing:
+            self.get_logger().warn(f"Waiting for state topics: {', '.join(missing)}")
 
 
 def main() -> None:
