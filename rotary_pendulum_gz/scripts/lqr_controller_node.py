@@ -57,7 +57,7 @@ class LqrControllerNode(Node):
             return
 
         x = [self.arm_angle, self.arm_vel, self.pole_angle, self.pole_vel]
-        u = -sum(k_i * x_i for k_i, x_i in zip(self.k, x))
+        u = sum(k_i * x_i for k_i, x_i in zip(self.k, x))
 
         if u > self.voltage_limit:
             u = self.voltage_limit
