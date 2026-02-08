@@ -32,7 +32,8 @@ class ResetPendulumService(Node):
         gz_req = ControlWorld.Request()
         gz_req.world_control = WorldControl()
         gz_req.world_control.pause = False
-        gz_req.world_control.reset.all = True
+        # Do not use reset.all here because dynamically spawned entities can disappear.
+        gz_req.world_control.reset.model_only = True
 
         future = self.gz_control_client.call_async(gz_req)
         rclpy.spin_until_future_complete(self, future, timeout_sec=2.0)
