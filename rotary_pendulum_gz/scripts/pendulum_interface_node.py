@@ -15,7 +15,7 @@ class PendulumInterfaceNode(Node):
 
         self.declare_parameter("arm_joint_name", "arm_joint")
         self.declare_parameter("pole_joint_name", "pole_joint")
-        self.declare_parameter("pole_initial_offset_deg", -180.0)
+        self.declare_parameter("pole_initial_offset_deg", 0.0)
         self.declare_parameter("motor_resistance", 1.2)
         self.declare_parameter("back_emf_constant", 0.04)
         self.declare_parameter("torque_constant", 0.1)
