@@ -3,6 +3,7 @@ import math
 from typing import Dict
 
 import rclpy
+from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64, Float64MultiArray
@@ -44,7 +45,8 @@ class PendulumInterfaceNode(Node):
         self.create_subscription(JointState, "/joint_states", self.joint_state_cb, 20)
         self.create_subscription(Float64, "/rotary_pendulum/motor_voltage_cmd", self.voltage_cmd_cb, 10)
 
-        self.create_timer(0.02, self.publish_motor_state)
+        # Publish motor telemetry using wall time so it is available even when sim time is paused.
+        self.create_timer(0.02, self.publish_motor_state, clock=Clock(clock_type=ClockType.SYSTEM_TIME))
 
     def joint_state_cb(self, msg: JointState) -> None:
         name_to_index = {name: i for i, name in enumerate(msg.name)}
