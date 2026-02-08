@@ -22,11 +22,14 @@ class LqrControllerNode(Node):
         self.declare_parameter("pole_ref_rad", 0.0)
         self.declare_parameter("capture_pole_angle_deg", 12.0)
         self.declare_parameter("capture_pole_vel_rad_s", 2.5)
+        self.declare_parameter("capture_arm_angle_deg", 45.0)
         self.declare_parameter("capture_arm_vel_rad_s", 4.0)
-        self.declare_parameter("exit_pole_angle_deg", 50.0)
-        self.declare_parameter("exit_pole_vel_rad_s", 10.0)
+        self.declare_parameter("exit_pole_angle_deg", 25.0)
+        self.declare_parameter("exit_pole_vel_rad_s", 6.0)
+        self.declare_parameter("exit_arm_angle_deg", 100.0)
+        self.declare_parameter("exit_arm_vel_rad_s", 8.0)
         self.declare_parameter("enter_lqr_hold_time_sec", 0.35)
-        self.declare_parameter("exit_lqr_hold_time_sec", 0.60)
+        self.declare_parameter("exit_lqr_hold_time_sec", 0.25)
         self.declare_parameter("min_swing_up_time_sec", 2.0)
         self.declare_parameter("velocity_filter_alpha", 0.85)
         self.declare_parameter("voltage_slew_rate_v_per_s", 60.0)
@@ -47,9 +50,12 @@ class LqrControllerNode(Node):
         self.pole_ref = float(self.get_parameter("pole_ref_rad").value)
         self.capture_pole_angle = float(self.get_parameter("capture_pole_angle_deg").value) * math.pi / 180.0
         self.capture_pole_vel = float(self.get_parameter("capture_pole_vel_rad_s").value)
+        self.capture_arm_angle = float(self.get_parameter("capture_arm_angle_deg").value) * math.pi / 180.0
         self.capture_arm_vel = float(self.get_parameter("capture_arm_vel_rad_s").value)
         self.exit_pole_angle = float(self.get_parameter("exit_pole_angle_deg").value) * math.pi / 180.0
         self.exit_pole_vel = float(self.get_parameter("exit_pole_vel_rad_s").value)
+        self.exit_arm_angle = float(self.get_parameter("exit_arm_angle_deg").value) * math.pi / 180.0
+        self.exit_arm_vel = float(self.get_parameter("exit_arm_vel_rad_s").value)
         self.enter_lqr_hold_time = float(self.get_parameter("enter_lqr_hold_time_sec").value)
         self.exit_lqr_hold_time = float(self.get_parameter("exit_lqr_hold_time_sec").value)
         self.min_swing_up_time = float(self.get_parameter("min_swing_up_time_sec").value)
@@ -78,6 +84,7 @@ class LqrControllerNode(Node):
         self.last_mode = "WAIT_STATE"
         self.last_control_time = time.monotonic()
         self._state_ready_logged = False
+        self._last_mode_reported = "WAIT_STATE"
 
         self.lqr_active = False
         self._enter_lqr_since = None
@@ -169,11 +176,14 @@ class LqrControllerNode(Node):
             (not forced_swing_up)
             and (abs(pole_err) <= self.capture_pole_angle)
             and (abs(self.pole_vel_filt) <= self.capture_pole_vel)
+            and (abs(arm_err) <= self.capture_arm_angle)
             and (abs(self.arm_vel_filt) <= self.capture_arm_vel)
         )
         must_exit_lqr = (
             (abs(pole_err) >= self.exit_pole_angle)
-            and (abs(self.pole_vel_filt) >= self.exit_pole_vel)
+            or (abs(self.pole_vel_filt) >= self.exit_pole_vel)
+            or (abs(arm_err) >= self.exit_arm_angle)
+            or (abs(self.arm_vel_filt) >= self.exit_arm_vel)
         )
 
         if not self.lqr_active:
@@ -204,9 +214,12 @@ class LqrControllerNode(Node):
             m = self.pendulum_mass
             l = self.pendulum_com_length
             g = 9.81
-            energy = 0.5 * m * l * l * (self.pole_vel_filt ** 2) + m * g * l * (1.0 - math.cos(pole_err))
+            # pole_err is 0 at upright and +/-pi at downward.
+            # Use energy above the downward equilibrium (target=2*m*g*l at upright).
+            energy = 0.5 * m * l * l * (self.pole_vel_filt ** 2) + m * g * l * (1.0 + math.cos(pole_err))
+            energy_error = energy - (2.0 * m * g * l)
             direction = 1.0 if (self.pole_vel_filt * math.cos(pole_err)) >= 0.0 else -1.0
-            u = -self.swing_up_gain * energy * direction - self.swing_up_damping * self.arm_vel_filt
+            u = self.swing_up_gain * energy_error * direction - self.swing_up_damping * self.arm_vel_filt
             self.last_mode = "SWING_UP"
             mode_voltage_limit = self.swing_up_voltage_limit
 
@@ -229,6 +242,12 @@ class LqrControllerNode(Node):
         self.voltage_cmd_pub.publish(cmd)
         self.last_u = u
         self._publish_mode()
+        if self.last_mode != self._last_mode_reported:
+            self.get_logger().info(
+                f"Mode switched: {self._last_mode_reported} -> {self.last_mode} "
+                f"(arm={self.arm_angle:.3f}, pole={self.pole_angle:.3f}, arm_v={self.arm_vel_filt:.3f}, pole_v={self.pole_vel_filt:.3f})"
+            )
+            self._last_mode_reported = self.last_mode
 
     def status_log_loop(self) -> None:
         missing = []
