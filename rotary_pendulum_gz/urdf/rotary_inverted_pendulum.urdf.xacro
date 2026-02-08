@@ -116,7 +116,7 @@
 
   <gazebo>
     <plugin filename="libgz_ros2_control-system.so" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
-      <parameters>${controllers_file}</parameters>
+      <parameters>$(arg controllers_file)</parameters>
     </plugin>
     <plugin filename="gz-sim-joint-state-publisher-system" name="gz::sim::systems::JointStatePublisher">
       <topic>/world/default/model/rotary_inverted_pendulum/joint_state</topic>
