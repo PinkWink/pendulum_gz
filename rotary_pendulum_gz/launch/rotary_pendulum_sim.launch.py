@@ -1,11 +1,13 @@
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, SetEnvironmentVariable, TimerAction
-from launch.substitutions import Command, EnvironmentVariable, PathJoinSubstitution
+from launch.actions import DeclareLaunchArgument, ExecuteProcess, SetEnvironmentVariable, TimerAction
+from launch.conditions import IfCondition
+from launch.substitutions import Command, EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
 
 def generate_launch_description():
+    enable_reset_service = LaunchConfiguration("enable_reset_service")
     pkg_share = FindPackageShare("rotary_pendulum_gz")
     world = PathJoinSubstitution([pkg_share, "worlds", "empty.sdf"])
     urdf_xacro = PathJoinSubstitution([pkg_share, "urdf", "rotary_inverted_pendulum.urdf.xacro"])
@@ -82,6 +84,7 @@ def generate_launch_description():
         executable="reset_pendulum_service.py",
         output="screen",
         parameters=[{"use_sim_time": True}],
+        condition=IfCondition(enable_reset_service),
     )
 
     delayed_spawn = TimerAction(period=2.0, actions=[spawn_robot])
@@ -94,6 +97,11 @@ def generate_launch_description():
         [
             gz_plugin_path,
             ld_library_path,
+            DeclareLaunchArgument(
+                "enable_reset_service",
+                default_value="false",
+                description="Enable reset service node that calls Gazebo world control.",
+            ),
             gz_sim,
             robot_state_publisher,
             bridge,

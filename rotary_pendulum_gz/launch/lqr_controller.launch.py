@@ -9,7 +9,7 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                "use_sim_time": True,
+                "use_sim_time": False,
                 "k": [10.0, 2.0, 120.0, 12.0],
                 "voltage_limit": 24.0,
                 "control_rate_hz": 100.0,
@@ -23,7 +23,7 @@ def generate_launch_description():
         output="screen",
         parameters=[
             {
-                "use_sim_time": True,
+                "use_sim_time": False,
                 "window_seconds": 15.0,
                 "update_hz": 20.0,
             }

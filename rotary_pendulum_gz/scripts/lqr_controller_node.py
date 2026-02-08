@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import rclpy
+from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
 from std_msgs.msg import Float64
 
@@ -32,8 +33,9 @@ class LqrControllerNode(Node):
         self.create_subscription(Float64, "/rotary_pendulum/pole_angle", self.pole_angle_cb, 20)
         self.create_subscription(Float64, "/rotary_pendulum/pole_angular_velocity", self.pole_vel_cb, 20)
 
-        self.create_timer(1.0 / self.control_rate_hz, self.control_loop)
-        self.create_timer(1.0, self.status_log_loop)
+        wall_clock = Clock(clock_type=ClockType.SYSTEM_TIME)
+        self.create_timer(1.0 / self.control_rate_hz, self.control_loop, clock=wall_clock)
+        self.create_timer(1.0, self.status_log_loop, clock=wall_clock)
         self.get_logger().info(
             f"LQR controller started. K={self.k}, voltage_limit={self.voltage_limit}, rate={self.control_rate_hz}Hz"
         )
