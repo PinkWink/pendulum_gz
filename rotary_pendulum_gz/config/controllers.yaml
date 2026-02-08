@@ -1,0 +1,16 @@
+controller_manager:
+  ros__parameters:
+    update_rate: 250
+    use_sim_time: true
+
+    joint_state_broadcaster:
+      type: joint_state_broadcaster/JointStateBroadcaster
+
+    arm_effort_controller:
+      type: forward_command_controller/ForwardCommandController
+
+arm_effort_controller:
+  ros__parameters:
+    joints:
+      - arm_joint
+    interface_name: effort

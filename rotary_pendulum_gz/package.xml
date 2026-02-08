@@ -1,0 +1,29 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rotary_pendulum_gz</name>
+  <version>0.1.0</version>
+  <description>Gazebo Harmonic simulation package for a rotary inverted pendulum in ROS 2 Jazzy.</description>
+  <maintainer email="pw@example.com">pw</maintainer>
+  <license>Apache-2.0</license>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <depend>controller_manager</depend>
+  <depend>forward_command_controller</depend>
+  <exec_depend>launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <depend>gz_ros2_control</depend>
+  <depend>joint_state_broadcaster</depend>
+  <depend>rclpy</depend>
+  <depend>robot_state_publisher</depend>
+  <depend>ros2_control</depend>
+  <depend>ros_gz_bridge</depend>
+  <depend>ros_gz_sim</depend>
+  <depend>sensor_msgs</depend>
+  <depend>std_msgs</depend>
+  <depend>xacro</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>
