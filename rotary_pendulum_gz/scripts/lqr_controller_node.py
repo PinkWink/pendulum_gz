@@ -29,6 +29,12 @@ class LqrControllerNode(Node):
         self.declare_parameter("capture_pole_vel_rad_s", 4.0)
         self.declare_parameter("capture_arm_angle_deg", 80.0)
         self.declare_parameter("capture_arm_vel_rad_s", 6.0)
+        self.declare_parameter("exit_pole_angle_deg", 35.0)
+        self.declare_parameter("exit_pole_vel_rad_s", 8.0)
+        self.declare_parameter("exit_arm_angle_deg", 130.0)
+        self.declare_parameter("exit_arm_vel_rad_s", 12.0)
+        self.declare_parameter("enter_lqr_hold_time_sec", 0.25)
+        self.declare_parameter("exit_lqr_hold_time_sec", 0.25)
         self.declare_parameter("min_swing_up_time_sec", 2.0)
         self.declare_parameter("velocity_filter_alpha", 0.85)
         self.declare_parameter("voltage_slew_rate_v_per_s", 60.0)
@@ -54,6 +60,12 @@ class LqrControllerNode(Node):
         self.capture_pole_vel = float(self.get_parameter("capture_pole_vel_rad_s").value)
         self.capture_arm_angle = float(self.get_parameter("capture_arm_angle_deg").value) * math.pi / 180.0
         self.capture_arm_vel = float(self.get_parameter("capture_arm_vel_rad_s").value)
+        self.exit_pole_angle = float(self.get_parameter("exit_pole_angle_deg").value) * math.pi / 180.0
+        self.exit_pole_vel = float(self.get_parameter("exit_pole_vel_rad_s").value)
+        self.exit_arm_angle = float(self.get_parameter("exit_arm_angle_deg").value) * math.pi / 180.0
+        self.exit_arm_vel = float(self.get_parameter("exit_arm_vel_rad_s").value)
+        self.enter_lqr_hold_time = float(self.get_parameter("enter_lqr_hold_time_sec").value)
+        self.exit_lqr_hold_time = float(self.get_parameter("exit_lqr_hold_time_sec").value)
         self.min_swing_up_time = float(self.get_parameter("min_swing_up_time_sec").value)
         self.vel_alpha = float(self.get_parameter("velocity_filter_alpha").value)
         self.voltage_slew_rate = float(self.get_parameter("voltage_slew_rate_v_per_s").value)
@@ -79,7 +91,9 @@ class LqrControllerNode(Node):
         self.last_control_time = time.monotonic()
         self._state_ready_logged = False
 
-        self.lqr_captured = False
+        self.lqr_active = False
+        self._enter_lqr_since = None
+        self._exit_lqr_since = None
         self.start_time = time.monotonic()
 
         self.voltage_cmd_pub = self.create_publisher(Float64, "/rotary_pendulum/motor_voltage_cmd", 10)
@@ -163,18 +177,40 @@ class LqrControllerNode(Node):
 
         forced_swing_up = (now - self.start_time) < self.min_swing_up_time
 
-        if (
+        can_enter_lqr = (
             (not forced_swing_up)
-            and (not self.lqr_captured)
             and (abs(pole_err) <= self.capture_pole_angle)
             and (abs(self.pole_vel_filt) <= self.capture_pole_vel)
             and (abs(arm_err) <= self.capture_arm_angle)
             and (abs(self.arm_vel_filt) <= self.capture_arm_vel)
-        ):
-            self.lqr_captured = True
+        )
+        must_exit_lqr = (
+            (abs(pole_err) >= self.exit_pole_angle)
+            or (abs(self.pole_vel_filt) >= self.exit_pole_vel)
+            or (abs(arm_err) >= self.exit_arm_angle)
+            or (abs(self.arm_vel_filt) >= self.exit_arm_vel)
+        )
 
-        # Once captured, stay in LQR permanently for this run.
-        if self.lqr_captured:
+        if not self.lqr_active:
+            if can_enter_lqr:
+                if self._enter_lqr_since is None:
+                    self._enter_lqr_since = now
+                elif (now - self._enter_lqr_since) >= self.enter_lqr_hold_time:
+                    self.lqr_active = True
+                    self._enter_lqr_since = None
+            else:
+                self._enter_lqr_since = None
+        else:
+            if must_exit_lqr:
+                if self._exit_lqr_since is None:
+                    self._exit_lqr_since = now
+                elif (now - self._exit_lqr_since) >= self.exit_lqr_hold_time:
+                    self.lqr_active = False
+                    self._exit_lqr_since = None
+            else:
+                self._exit_lqr_since = None
+
+        if self.lqr_active:
             x = [arm_err, self.arm_vel_filt, pole_err, self.pole_vel_filt]
             u = -sum(k_i * x_i for k_i, x_i in zip(self.k, x))
             self.last_mode = "LQR"
@@ -234,7 +270,7 @@ class LqrControllerNode(Node):
             return
 
         self.get_logger().info(
-            f"mode={self.last_mode}, captured={self.lqr_captured}, u={self.last_u:.3f}V (raw={self.last_u_unsat:.3f}V), "
+            f"mode={self.last_mode}, lqr_active={self.lqr_active}, u={self.last_u:.3f}V (raw={self.last_u_unsat:.3f}V), "
             f"arm={self.arm_angle:.3f}, pole={self.pole_angle:.3f}, arm_vf={self.arm_vel_filt:.3f}, pole_vf={self.pole_vel_filt:.3f}"
         )
 
