@@ -16,7 +16,8 @@ class LqrControllerNode(Node):
         super().__init__("lqr_controller_node")
 
         self.declare_parameter("k", [2.0, 0.3, 35.0, 3.0])
-        self.declare_parameter("voltage_limit", 10.0)
+        self.declare_parameter("swing_up_voltage_limit", 10.0)
+        self.declare_parameter("lqr_voltage_limit", 4.0)
         self.declare_parameter("control_rate_hz", 100.0)
         self.declare_parameter("publish_zero_if_state_missing", True)
         self.declare_parameter("arm_joint_name", "arm_joint")
@@ -26,6 +27,8 @@ class LqrControllerNode(Node):
         self.declare_parameter("pole_ref_rad", 0.0)
         self.declare_parameter("capture_pole_angle_deg", 15.0)
         self.declare_parameter("capture_pole_vel_rad_s", 4.0)
+        self.declare_parameter("capture_arm_angle_deg", 80.0)
+        self.declare_parameter("capture_arm_vel_rad_s", 6.0)
         self.declare_parameter("min_swing_up_time_sec", 2.0)
         self.declare_parameter("velocity_filter_alpha", 0.85)
         self.declare_parameter("voltage_slew_rate_v_per_s", 60.0)
@@ -38,7 +41,8 @@ class LqrControllerNode(Node):
         if len(self.k) != 4:
             raise ValueError("Parameter 'k' must have exactly 4 gains: [k_arm, k_arm_vel, k_pole, k_pole_vel]")
 
-        self.voltage_limit = float(self.get_parameter("voltage_limit").value)
+        self.swing_up_voltage_limit = float(self.get_parameter("swing_up_voltage_limit").value)
+        self.lqr_voltage_limit = float(self.get_parameter("lqr_voltage_limit").value)
         self.control_rate_hz = float(self.get_parameter("control_rate_hz").value)
         self.publish_zero_if_state_missing = bool(self.get_parameter("publish_zero_if_state_missing").value)
         self.arm_joint_name = str(self.get_parameter("arm_joint_name").value)
@@ -48,6 +52,8 @@ class LqrControllerNode(Node):
         self.pole_ref = float(self.get_parameter("pole_ref_rad").value)
         self.capture_pole_angle = float(self.get_parameter("capture_pole_angle_deg").value) * math.pi / 180.0
         self.capture_pole_vel = float(self.get_parameter("capture_pole_vel_rad_s").value)
+        self.capture_arm_angle = float(self.get_parameter("capture_arm_angle_deg").value) * math.pi / 180.0
+        self.capture_arm_vel = float(self.get_parameter("capture_arm_vel_rad_s").value)
         self.min_swing_up_time = float(self.get_parameter("min_swing_up_time_sec").value)
         self.vel_alpha = float(self.get_parameter("velocity_filter_alpha").value)
         self.voltage_slew_rate = float(self.get_parameter("voltage_slew_rate_v_per_s").value)
@@ -87,7 +93,8 @@ class LqrControllerNode(Node):
         self.create_timer(1.0, self.status_log_loop, clock=wall_clock)
 
         self.get_logger().info(
-            f"Controller started: swing-up then LQR capture. K={self.k}, Vlim={self.voltage_limit}"
+            "Controller started: swing-up then LQR capture. "
+            f"K={self.k}, Vlim_swing={self.swing_up_voltage_limit}, Vlim_lqr={self.lqr_voltage_limit}"
         )
 
     @staticmethod
@@ -156,13 +163,22 @@ class LqrControllerNode(Node):
 
         forced_swing_up = (now - self.start_time) < self.min_swing_up_time
 
-        if (not forced_swing_up) and (not self.lqr_captured) and (abs(pole_err) <= self.capture_pole_angle) and (abs(self.pole_vel_filt) <= self.capture_pole_vel):
+        if (
+            (not forced_swing_up)
+            and (not self.lqr_captured)
+            and (abs(pole_err) <= self.capture_pole_angle)
+            and (abs(self.pole_vel_filt) <= self.capture_pole_vel)
+            and (abs(arm_err) <= self.capture_arm_angle)
+            and (abs(self.arm_vel_filt) <= self.capture_arm_vel)
+        ):
             self.lqr_captured = True
 
-        if self.lqr_captured and (not forced_swing_up):
+        # Once captured, stay in LQR permanently for this run.
+        if self.lqr_captured:
             x = [arm_err, self.arm_vel_filt, pole_err, self.pole_vel_filt]
             u = -sum(k_i * x_i for k_i, x_i in zip(self.k, x))
             self.last_mode = "LQR"
+            mode_voltage_limit = self.lqr_voltage_limit
         else:
             m = self.pendulum_mass
             l = self.pendulum_com_length
@@ -171,13 +187,14 @@ class LqrControllerNode(Node):
             direction = 1.0 if (self.pole_vel_filt * math.cos(pole_err)) >= 0.0 else -1.0
             u = -self.swing_up_gain * energy * direction - self.swing_up_damping * self.arm_vel_filt
             self.last_mode = "SWING_UP"
+            mode_voltage_limit = self.swing_up_voltage_limit
 
         self.last_u_unsat = u
 
-        if u > self.voltage_limit:
-            u = self.voltage_limit
-        elif u < -self.voltage_limit:
-            u = -self.voltage_limit
+        if u > mode_voltage_limit:
+            u = mode_voltage_limit
+        elif u < -mode_voltage_limit:
+            u = -mode_voltage_limit
 
         du_max = max(0.0, self.voltage_slew_rate) * dt
         du = u - self.last_u
