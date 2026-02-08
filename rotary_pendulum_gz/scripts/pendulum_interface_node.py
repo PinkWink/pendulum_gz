@@ -5,6 +5,7 @@ from typing import Dict
 import rclpy
 from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64, Float64MultiArray
 
@@ -42,7 +43,7 @@ class PendulumInterfaceNode(Node):
         self.current_pub = self.create_publisher(Float64, "/rotary_pendulum/motor_current", 10)
         self.effort_cmd_pub = self.create_publisher(Float64MultiArray, "/arm_effort_controller/commands", 10)
 
-        self.create_subscription(JointState, "/joint_states", self.joint_state_cb, 20)
+        self.create_subscription(JointState, "/joint_states", self.joint_state_cb, qos_profile_sensor_data)
         self.create_subscription(Float64, "/rotary_pendulum/motor_voltage_cmd", self.voltage_cmd_cb, 10)
 
         # Publish motor telemetry using wall time so it is available even when sim time is paused.

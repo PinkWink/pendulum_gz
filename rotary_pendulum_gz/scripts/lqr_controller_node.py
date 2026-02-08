@@ -6,6 +6,7 @@ import time
 import rclpy
 from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
+from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64, String
 
@@ -79,7 +80,7 @@ class LqrControllerNode(Node):
         self.mode_pub = self.create_publisher(String, "/rotary_pendulum/control_mode", 10)
 
         # Use joint_states as the single source of truth to avoid startup race/misaligned offsets.
-        self.create_subscription(JointState, "/joint_states", self.joint_states_cb, 20)
+        self.create_subscription(JointState, "/joint_states", self.joint_states_cb, qos_profile_sensor_data)
 
         wall_clock = Clock(clock_type=ClockType.SYSTEM_TIME)
         self.create_timer(1.0 / self.control_rate_hz, self.control_loop, clock=wall_clock)
