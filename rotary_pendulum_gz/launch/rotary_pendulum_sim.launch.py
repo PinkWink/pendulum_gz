@@ -19,7 +19,7 @@ def generate_launch_description():
     ])
 
     gz_sim = ExecuteProcess(
-        cmd=["gz", "sim", "-r", world],
+        cmd=["gz", "sim", world],
         output="screen",
     )
 
