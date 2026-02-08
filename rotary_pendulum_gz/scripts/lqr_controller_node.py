@@ -14,6 +14,7 @@ class LqrControllerNode(Node):
         self.declare_parameter("k", [10.0, 2.0, 120.0, 12.0])
         self.declare_parameter("voltage_limit", 24.0)
         self.declare_parameter("control_rate_hz", 100.0)
+        self.declare_parameter("publish_zero_if_state_missing", True)
         self.declare_parameter("arm_joint_name", "arm_joint")
         self.declare_parameter("pole_joint_name", "pole_joint")
         self.declare_parameter("pole_initial_offset_deg", 3.0)
@@ -24,6 +25,7 @@ class LqrControllerNode(Node):
 
         self.voltage_limit = float(self.get_parameter("voltage_limit").value)
         self.control_rate_hz = float(self.get_parameter("control_rate_hz").value)
+        self.publish_zero_if_state_missing = bool(self.get_parameter("publish_zero_if_state_missing").value)
         self.arm_joint_name = str(self.get_parameter("arm_joint_name").value)
         self.pole_joint_name = str(self.get_parameter("pole_joint_name").value)
         self.pole_offset = float(self.get_parameter("pole_initial_offset_deg").value) * 3.141592653589793 / 180.0
@@ -88,6 +90,11 @@ class LqrControllerNode(Node):
 
     def control_loop(self) -> None:
         if None in (self.arm_angle, self.arm_vel, self.pole_angle, self.pole_vel):
+            if self.publish_zero_if_state_missing:
+                msg = Float64()
+                msg.data = 0.0
+                self.voltage_cmd_pub.publish(msg)
+                self.last_u = 0.0
             return
 
         x = [self.arm_angle, self.arm_vel, self.pole_angle, self.pole_vel]

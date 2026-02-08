@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from collections import deque
+import math
 import threading
 import time
 
@@ -29,11 +30,11 @@ class StatePlotterNode(Node):
         self.pole_vel = deque()
         self.motor_voltage = deque()
 
-        self.last_arm_angle = 0.0
-        self.last_arm_vel = 0.0
-        self.last_pole_angle = 0.0
-        self.last_pole_vel = 0.0
-        self.last_motor_voltage = 0.0
+        self.last_arm_angle = math.nan
+        self.last_arm_vel = math.nan
+        self.last_pole_angle = math.nan
+        self.last_pole_vel = math.nan
+        self.last_motor_voltage = math.nan
 
         self.lock = threading.Lock()
 
@@ -109,6 +110,9 @@ class StatePlotterNode(Node):
     @staticmethod
     def _set_axis_limits(axis, x, y, y_margin=0.1) -> None:
         if not x:
+            return
+        y = [v for v in y if not math.isnan(v)]
+        if not y:
             return
 
         xmin = x[0]
