@@ -176,6 +176,7 @@ class LqrControllerNode(Node):
             self.pole_vel_filt = a * self.pole_vel_filt + (1.0 - a) * self.pole_vel
 
         arm_err = self.wrap_to_pi(self.arm_angle - self.arm_ref)
+        arm_pos_err_raw = self.arm_angle - self.arm_ref
         pole_err = self.wrap_to_pi(self.pole_angle - self.pole_ref)
 
         forced_swing_up = (now - self.start_time) < self.min_swing_up_time
@@ -184,13 +185,13 @@ class LqrControllerNode(Node):
             (not forced_swing_up)
             and (abs(pole_err) <= self.capture_pole_angle)
             and (abs(self.pole_vel_filt) <= self.capture_pole_vel)
-            and (abs(arm_err) <= self.capture_arm_angle)
+            and (abs(arm_pos_err_raw) <= self.capture_arm_angle)
             and (abs(self.arm_vel_filt) <= self.capture_arm_vel)
         )
         must_exit_lqr = (
             (abs(pole_err) >= self.exit_pole_angle)
             or (abs(self.pole_vel_filt) >= self.exit_pole_vel)
-            or (abs(arm_err) >= self.exit_arm_angle)
+            or (abs(arm_pos_err_raw) >= self.exit_arm_angle)
             or (abs(self.arm_vel_filt) >= self.exit_arm_vel)
         )
 
@@ -236,11 +237,11 @@ class LqrControllerNode(Node):
                 u = self.swing_up_min_voltage * (1.0 if u >= 0.0 else -1.0)
 
             # Keep arm angle within +/- limit during swing-up.
-            if abs(arm_err) > self.swing_up_arm_limit:
-                over = abs(arm_err) - self.swing_up_arm_limit
+            if abs(arm_pos_err_raw) > self.swing_up_arm_limit:
+                over = abs(arm_pos_err_raw) - self.swing_up_arm_limit
                 u = (
-                    -self.swing_up_arm_limit_recovery_gain * math.copysign(over, arm_err)
-                    - self.swing_up_damping * self.arm_vel_filt
+                    -self.swing_up_arm_limit_recovery_gain * math.copysign(over, arm_pos_err_raw)
+                    - 2.0 * self.swing_up_damping * self.arm_vel_filt
                 )
             self.last_mode = "SWING_UP"
             mode_voltage_limit = self.swing_up_voltage_limit
