@@ -10,9 +10,13 @@ def generate_launch_description():
         parameters=[
             {
                 "use_sim_time": False,
-                "k": [10.0, 2.0, 120.0, 12.0],
-                "voltage_limit": 24.0,
+                "k": [2.0, 0.3, 35.0, 3.0],
+                "voltage_limit": 10.0,
                 "control_rate_hz": 100.0,
+                "lqr_enable_pole_angle_deg": 20.0,
+                "lqr_enable_pole_vel_rad_s": 10.0,
+                "velocity_filter_alpha": 0.85,
+                "voltage_slew_rate_v_per_s": 60.0,
             }
         ],
     )

@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 
+import math
+import time
+
 import rclpy
 from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
@@ -11,13 +14,19 @@ class LqrControllerNode(Node):
     def __init__(self) -> None:
         super().__init__("lqr_controller_node")
 
-        self.declare_parameter("k", [10.0, 2.0, 120.0, 12.0])
-        self.declare_parameter("voltage_limit", 24.0)
+        self.declare_parameter("k", [2.0, 0.3, 35.0, 3.0])
+        self.declare_parameter("voltage_limit", 10.0)
         self.declare_parameter("control_rate_hz", 100.0)
         self.declare_parameter("publish_zero_if_state_missing", True)
         self.declare_parameter("arm_joint_name", "arm_joint")
         self.declare_parameter("pole_joint_name", "pole_joint")
         self.declare_parameter("pole_initial_offset_deg", 3.0)
+        self.declare_parameter("arm_ref_rad", 0.0)
+        self.declare_parameter("pole_ref_rad", 0.0)
+        self.declare_parameter("lqr_enable_pole_angle_deg", 20.0)
+        self.declare_parameter("lqr_enable_pole_vel_rad_s", 10.0)
+        self.declare_parameter("velocity_filter_alpha", 0.85)
+        self.declare_parameter("voltage_slew_rate_v_per_s", 60.0)
 
         self.k = [float(v) for v in self.get_parameter("k").value]
         if len(self.k) != 4:
@@ -29,12 +38,26 @@ class LqrControllerNode(Node):
         self.arm_joint_name = str(self.get_parameter("arm_joint_name").value)
         self.pole_joint_name = str(self.get_parameter("pole_joint_name").value)
         self.pole_offset = float(self.get_parameter("pole_initial_offset_deg").value) * 3.141592653589793 / 180.0
+        self.arm_ref = float(self.get_parameter("arm_ref_rad").value)
+        self.pole_ref = float(self.get_parameter("pole_ref_rad").value)
+        self.lqr_enable_pole_angle = (
+            float(self.get_parameter("lqr_enable_pole_angle_deg").value) * 3.141592653589793 / 180.0
+        )
+        self.lqr_enable_pole_vel = float(self.get_parameter("lqr_enable_pole_vel_rad_s").value)
+        self.vel_alpha = float(self.get_parameter("velocity_filter_alpha").value)
+        self.voltage_slew_rate = float(self.get_parameter("voltage_slew_rate_v_per_s").value)
 
         self.arm_angle = None
         self.arm_vel = None
         self.pole_angle = None
         self.pole_vel = None
+        self.arm_vel_filt = 0.0
+        self.pole_vel_filt = 0.0
+        self._vel_filter_initialized = False
         self.last_u = 0.0
+        self.last_u_unsat = 0.0
+        self.last_mode = "WAIT_STATE"
+        self.last_control_time = time.monotonic()
         self._state_ready_logged = False
 
         self.voltage_cmd_pub = self.create_publisher(Float64, "/rotary_pendulum/motor_voltage_cmd", 10)
@@ -64,6 +87,10 @@ class LqrControllerNode(Node):
     def pole_vel_cb(self, msg: Float64) -> None:
         self.pole_vel = float(msg.data)
 
+    @staticmethod
+    def wrap_to_pi(angle: float) -> float:
+        return math.atan2(math.sin(angle), math.cos(angle))
+
     def _find_joint_index(self, names: list[str], target: str):
         if target in names:
             return names.index(target)
@@ -89,21 +116,58 @@ class LqrControllerNode(Node):
                 self.pole_vel = float(msg.velocity[pi])
 
     def control_loop(self) -> None:
+        now = time.monotonic()
+        dt = now - self.last_control_time
+        if dt <= 1e-6:
+            dt = 1.0 / self.control_rate_hz
+        self.last_control_time = now
+
         if None in (self.arm_angle, self.arm_vel, self.pole_angle, self.pole_vel):
             if self.publish_zero_if_state_missing:
                 msg = Float64()
                 msg.data = 0.0
                 self.voltage_cmd_pub.publish(msg)
                 self.last_u = 0.0
+                self.last_u_unsat = 0.0
+            self.last_mode = "WAIT_STATE"
             return
 
-        x = [self.arm_angle, self.arm_vel, self.pole_angle, self.pole_vel]
-        u = -sum(k_i * x_i for k_i, x_i in zip(self.k, x))
+        if not self._vel_filter_initialized:
+            self.arm_vel_filt = self.arm_vel
+            self.pole_vel_filt = self.pole_vel
+            self._vel_filter_initialized = True
+        else:
+            a = max(0.0, min(0.999, self.vel_alpha))
+            self.arm_vel_filt = a * self.arm_vel_filt + (1.0 - a) * self.arm_vel
+            self.pole_vel_filt = a * self.pole_vel_filt + (1.0 - a) * self.pole_vel
+
+        arm_err = self.wrap_to_pi(self.arm_angle - self.arm_ref)
+        pole_err = self.wrap_to_pi(self.pole_angle - self.pole_ref)
+
+        lqr_enabled = (abs(pole_err) <= self.lqr_enable_pole_angle) and (abs(self.pole_vel_filt) <= self.lqr_enable_pole_vel)
+
+        if lqr_enabled:
+            x = [arm_err, self.arm_vel_filt, pole_err, self.pole_vel_filt]
+            u = -sum(k_i * x_i for k_i, x_i in zip(self.k, x))
+            self.last_mode = "LQR"
+        else:
+            # Keep motor quiet outside LQR region (swing-up controller can be added later).
+            u = 0.0
+            self.last_mode = "HOLD"
+
+        self.last_u_unsat = u
 
         if u > self.voltage_limit:
             u = self.voltage_limit
         elif u < -self.voltage_limit:
             u = -self.voltage_limit
+
+        du_max = max(0.0, self.voltage_slew_rate) * dt
+        du = u - self.last_u
+        if du > du_max:
+            u = self.last_u + du_max
+        elif du < -du_max:
+            u = self.last_u - du_max
 
         msg = Float64()
         msg.data = u
@@ -133,6 +197,13 @@ class LqrControllerNode(Node):
                 f"u={self.last_u:.3f} V"
             )
             self._state_ready_logged = True
+            return
+
+        self.get_logger().info(
+            f"mode={self.last_mode}, u={self.last_u:.3f}V (raw={self.last_u_unsat:.3f}V), "
+            f"arm={self.arm_angle:.3f}, pole={self.pole_angle:.3f}, "
+            f"arm_vf={self.arm_vel_filt:.3f}, pole_vf={self.pole_vel_filt:.3f}"
+        )
 
 
 def main() -> None:
