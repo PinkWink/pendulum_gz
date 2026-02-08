@@ -7,7 +7,7 @@ import rclpy
 from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, String
 
 
 class LqrControllerNode(Node):
@@ -20,13 +20,18 @@ class LqrControllerNode(Node):
         self.declare_parameter("publish_zero_if_state_missing", True)
         self.declare_parameter("arm_joint_name", "arm_joint")
         self.declare_parameter("pole_joint_name", "pole_joint")
-        self.declare_parameter("pole_initial_offset_deg", 3.0)
+        self.declare_parameter("pole_initial_offset_deg", -180.0)
         self.declare_parameter("arm_ref_rad", 0.0)
         self.declare_parameter("pole_ref_rad", 0.0)
         self.declare_parameter("lqr_enable_pole_angle_deg", 20.0)
         self.declare_parameter("lqr_enable_pole_vel_rad_s", 10.0)
         self.declare_parameter("velocity_filter_alpha", 0.85)
         self.declare_parameter("voltage_slew_rate_v_per_s", 60.0)
+        self.declare_parameter("enable_swing_up", True)
+        self.declare_parameter("swing_up_gain", 5.0)
+        self.declare_parameter("swing_up_damping", 0.5)
+        self.declare_parameter("pendulum_mass", 0.15)
+        self.declare_parameter("pendulum_com_length", 0.5)
 
         self.k = [float(v) for v in self.get_parameter("k").value]
         if len(self.k) != 4:
@@ -46,6 +51,11 @@ class LqrControllerNode(Node):
         self.lqr_enable_pole_vel = float(self.get_parameter("lqr_enable_pole_vel_rad_s").value)
         self.vel_alpha = float(self.get_parameter("velocity_filter_alpha").value)
         self.voltage_slew_rate = float(self.get_parameter("voltage_slew_rate_v_per_s").value)
+        self.enable_swing_up = bool(self.get_parameter("enable_swing_up").value)
+        self.swing_up_gain = float(self.get_parameter("swing_up_gain").value)
+        self.swing_up_damping = float(self.get_parameter("swing_up_damping").value)
+        self.pendulum_mass = float(self.get_parameter("pendulum_mass").value)
+        self.pendulum_com_length = float(self.get_parameter("pendulum_com_length").value)
 
         self.arm_angle = None
         self.arm_vel = None
@@ -61,6 +71,7 @@ class LqrControllerNode(Node):
         self._state_ready_logged = False
 
         self.voltage_cmd_pub = self.create_publisher(Float64, "/rotary_pendulum/motor_voltage_cmd", 10)
+        self.mode_pub = self.create_publisher(String, "/rotary_pendulum/control_mode", 10)
 
         self.create_subscription(Float64, "/rotary_pendulum/arm_angle", self.arm_angle_cb, 20)
         self.create_subscription(Float64, "/rotary_pendulum/arm_angular_velocity", self.arm_vel_cb, 20)
@@ -151,9 +162,19 @@ class LqrControllerNode(Node):
             u = -sum(k_i * x_i for k_i, x_i in zip(self.k, x))
             self.last_mode = "LQR"
         else:
-            # Keep motor quiet outside LQR region (swing-up controller can be added later).
-            u = 0.0
-            self.last_mode = "HOLD"
+            if self.enable_swing_up:
+                m = self.pendulum_mass
+                l = self.pendulum_com_length
+                g = 9.81
+                # Upright reference energy is zero with this definition.
+                energy = 0.5 * m * l * l * (self.pole_vel_filt ** 2) + m * g * l * (1.0 - math.cos(pole_err))
+                direction_signal = self.pole_vel_filt * math.cos(pole_err)
+                direction = 1.0 if direction_signal >= 0.0 else -1.0
+                u = -self.swing_up_gain * energy * direction - self.swing_up_damping * self.arm_vel_filt
+                self.last_mode = "SWING_UP"
+            else:
+                u = 0.0
+                self.last_mode = "HOLD"
 
         self.last_u_unsat = u
 
@@ -173,6 +194,10 @@ class LqrControllerNode(Node):
         msg.data = u
         self.voltage_cmd_pub.publish(msg)
         self.last_u = u
+
+        mode_msg = String()
+        mode_msg.data = self.last_mode
+        self.mode_pub.publish(mode_msg)
 
     def status_log_loop(self) -> None:
         missing = []

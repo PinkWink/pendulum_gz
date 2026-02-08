@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import Float64
+from std_msgs.msg import Float64, String
 
 
 class StatePlotterNode(Node):
@@ -35,6 +35,7 @@ class StatePlotterNode(Node):
         self.last_pole_angle = math.nan
         self.last_pole_vel = math.nan
         self.last_motor_voltage = math.nan
+        self.last_control_mode = "N/A"
 
         self.lock = threading.Lock()
 
@@ -43,6 +44,7 @@ class StatePlotterNode(Node):
         self.create_subscription(Float64, "/rotary_pendulum/pole_angle", self.pole_angle_cb, 20)
         self.create_subscription(Float64, "/rotary_pendulum/pole_angular_velocity", self.pole_vel_cb, 20)
         self.create_subscription(Float64, "/rotary_pendulum/motor_voltage", self.motor_voltage_cb, 20)
+        self.create_subscription(String, "/rotary_pendulum/control_mode", self.control_mode_cb, 20)
 
         self.create_timer(1.0 / self.update_hz, self.sample)
 
@@ -88,6 +90,10 @@ class StatePlotterNode(Node):
     def motor_voltage_cb(self, msg: Float64) -> None:
         with self.lock:
             self.last_motor_voltage = float(msg.data)
+
+    def control_mode_cb(self, msg: String) -> None:
+        with self.lock:
+            self.last_control_mode = msg.data
 
     def sample(self) -> None:
         now = time.time() - self.t0
@@ -135,6 +141,7 @@ class StatePlotterNode(Node):
             arm_v = list(self.arm_vel)
             pole_v = list(self.pole_vel)
             v = list(self.motor_voltage)
+            mode = self.last_control_mode
 
         self.line_arm_angle.set_data(t, arm_a)
         self.line_pole_angle.set_data(t, pole_a)
@@ -145,6 +152,7 @@ class StatePlotterNode(Node):
         self._set_axis_limits(self.axes[0], t, arm_a + pole_a)
         self._set_axis_limits(self.axes[1], t, arm_v + pole_v)
         self._set_axis_limits(self.axes[2], t, v)
+        self.axes[2].set_title(f"control mode: {mode}")
 
         return (
             self.line_arm_angle,

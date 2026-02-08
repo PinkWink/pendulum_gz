@@ -5,8 +5,8 @@
   <xacro:property name="arm_length" value="0.5"/>
   <xacro:property name="pole_length" value="1.0"/>
   <xacro:property name="rod_radius" value="0.005"/>
-  <xacro:property name="pole_initial_deg" value="3.0"/>
-  <xacro:property name="pole_initial_rad" value="0.0523598776"/>
+  <xacro:property name="pole_initial_deg" value="-180.0"/>
+  <xacro:property name="pole_initial_rad" value="-3.14159265359"/>
 
   <link name="world"/>
 
