@@ -14,31 +14,32 @@ class LqrControllerNode(Node):
         super().__init__("lqr_controller_node")
 
         self.declare_parameter("k", [12.0, 2.0, 160.0, 20.0])
-        self.declare_parameter("swing_up_voltage_limit", 18.0)
+        self.declare_parameter("swing_up_voltage_limit", 22.0)
         self.declare_parameter("lqr_voltage_limit", 24.0)
         self.declare_parameter("control_rate_hz", 100.0)
         self.declare_parameter("publish_zero_if_state_missing", True)
         self.declare_parameter("arm_ref_rad", 0.0)
         self.declare_parameter("pole_ref_rad", 0.0)
-        self.declare_parameter("capture_pole_angle_deg", 35.0)
-        self.declare_parameter("capture_pole_vel_rad_s", 10.0)
-        self.declare_parameter("capture_arm_angle_deg", 120.0)
-        self.declare_parameter("capture_arm_vel_rad_s", 12.0)
-        self.declare_parameter("exit_pole_angle_deg", 45.0)
-        self.declare_parameter("exit_pole_vel_rad_s", 12.0)
-        self.declare_parameter("exit_arm_angle_deg", 100.0)
-        self.declare_parameter("exit_arm_vel_rad_s", 8.0)
+        self.declare_parameter("capture_pole_angle_deg", 60.0)
+        self.declare_parameter("capture_pole_vel_rad_s", 14.0)
+        self.declare_parameter("capture_arm_angle_deg", 85.0)
+        self.declare_parameter("capture_arm_vel_rad_s", 15.0)
+        self.declare_parameter("exit_pole_angle_deg", 75.0)
+        self.declare_parameter("exit_pole_vel_rad_s", 18.0)
+        self.declare_parameter("exit_arm_angle_deg", 95.0)
+        self.declare_parameter("exit_arm_vel_rad_s", 12.0)
         self.declare_parameter("enter_lqr_hold_time_sec", 0.03)
         self.declare_parameter("exit_lqr_hold_time_sec", 0.25)
         self.declare_parameter("min_swing_up_time_sec", 2.0)
         self.declare_parameter("velocity_filter_alpha", 0.85)
         self.declare_parameter("voltage_slew_rate_v_per_s", 200.0)
-        self.declare_parameter("swing_up_gain", 14.0)
-        self.declare_parameter("swing_up_damping", 0.15)
-        self.declare_parameter("swing_up_arm_centering_gain", 1.0)
+        self.declare_parameter("swing_up_gain", 18.0)
+        self.declare_parameter("swing_up_damping", 0.20)
+        self.declare_parameter("swing_up_arm_centering_gain", 3.0)
         self.declare_parameter("swing_up_min_voltage", 8.0)
         self.declare_parameter("swing_up_arm_limit_deg", 80.0)
-        self.declare_parameter("swing_up_arm_limit_recovery_gain", 12.0)
+        self.declare_parameter("swing_up_arm_limit_recovery_gain", 22.0)
+        self.declare_parameter("swing_up_pump_voltage", 10.0)
         self.declare_parameter("pendulum_mass", 0.15)
         self.declare_parameter("pendulum_com_length", 0.5)
 
@@ -71,6 +72,7 @@ class LqrControllerNode(Node):
         self.swing_up_min_voltage = float(self.get_parameter("swing_up_min_voltage").value)
         self.swing_up_arm_limit = float(self.get_parameter("swing_up_arm_limit_deg").value) * math.pi / 180.0
         self.swing_up_arm_limit_recovery_gain = float(self.get_parameter("swing_up_arm_limit_recovery_gain").value)
+        self.swing_up_pump_voltage = float(self.get_parameter("swing_up_pump_voltage").value)
         self.pendulum_mass = float(self.get_parameter("pendulum_mass").value)
         self.pendulum_com_length = float(self.get_parameter("pendulum_com_length").value)
 
@@ -230,17 +232,17 @@ class LqrControllerNode(Node):
             direction = 1.0 if (self.pole_vel_filt * math.cos(pole_err)) >= 0.0 else -1.0
             u = (
                 self.swing_up_gain * energy_error * direction
+                + self.swing_up_pump_voltage * direction
                 - self.swing_up_damping * self.arm_vel_filt
-                - self.swing_up_arm_centering_gain * arm_err
+                - self.swing_up_arm_centering_gain * arm_pos_err_raw
             )
             if abs(u) < self.swing_up_min_voltage and abs(pole_err) > self.capture_pole_angle:
                 u = self.swing_up_min_voltage * (1.0 if u >= 0.0 else -1.0)
 
             # Keep arm angle within +/- limit during swing-up.
             if abs(arm_pos_err_raw) > self.swing_up_arm_limit:
-                over = abs(arm_pos_err_raw) - self.swing_up_arm_limit
                 u = (
-                    -self.swing_up_arm_limit_recovery_gain * math.copysign(over, arm_pos_err_raw)
+                    -self.swing_up_arm_limit_recovery_gain * math.copysign(1.0, arm_pos_err_raw)
                     - 2.0 * self.swing_up_damping * self.arm_vel_filt
                 )
             self.last_mode = "SWING_UP"
