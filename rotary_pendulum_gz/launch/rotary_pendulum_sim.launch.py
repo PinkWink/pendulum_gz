@@ -1,6 +1,8 @@
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, ExecuteProcess, SetEnvironmentVariable, TimerAction
+from launch.event_handlers import OnProcessExit
 from launch.conditions import IfCondition
+from launch.actions import RegisterEventHandler
 from launch.substitutions import Command, EnvironmentVariable, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
@@ -62,14 +64,30 @@ def generate_launch_description():
         package="controller_manager",
         executable="spawner",
         output="screen",
-        arguments=["joint_state_broadcaster", "--controller-manager", "/controller_manager"],
+        arguments=[
+            "joint_state_broadcaster",
+            "--controller-manager",
+            "/controller_manager",
+            "--controller-manager-timeout",
+            "120",
+            "--switch-timeout",
+            "30",
+        ],
     )
 
     arm_effort_controller_spawner = Node(
         package="controller_manager",
         executable="spawner",
         output="screen",
-        arguments=["arm_effort_controller", "--controller-manager", "/controller_manager"],
+        arguments=[
+            "arm_effort_controller",
+            "--controller-manager",
+            "/controller_manager",
+            "--controller-manager-timeout",
+            "120",
+            "--switch-timeout",
+            "30",
+        ],
     )
 
     pendulum_interface = Node(
@@ -88,9 +106,15 @@ def generate_launch_description():
     )
 
     delayed_spawn = TimerAction(period=2.0, actions=[spawn_robot])
-    delayed_controllers = TimerAction(
+    delayed_jsb = TimerAction(
         period=5.0,
-        actions=[joint_state_broadcaster_spawner, arm_effort_controller_spawner],
+        actions=[joint_state_broadcaster_spawner],
+    )
+    delayed_arm_controller = RegisterEventHandler(
+        OnProcessExit(
+            target_action=joint_state_broadcaster_spawner,
+            on_exit=[TimerAction(period=1.0, actions=[arm_effort_controller_spawner])],
+        )
     )
 
     return LaunchDescription(
@@ -106,7 +130,8 @@ def generate_launch_description():
             robot_state_publisher,
             bridge,
             delayed_spawn,
-            delayed_controllers,
+            delayed_jsb,
+            delayed_arm_controller,
             pendulum_interface,
             reset_service,
         ]
