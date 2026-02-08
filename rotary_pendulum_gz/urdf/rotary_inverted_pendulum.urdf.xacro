@@ -98,7 +98,7 @@
     <parent link="arm_link"/>
     <child link="pole_link"/>
     <origin xyz="0.5 0 0" rpy="0 ${pole_initial_rad} 0"/>
-    <axis xyz="0 1 0"/>
+    <axis xyz="0 -1 0"/>
     <limit lower="-3.14159265359" upper="3.14159265359" effort="10.0" velocity="20.0"/>
     <dynamics damping="0.002" friction="0.0"/>
   </joint>
