@@ -25,6 +25,7 @@ class LqrControllerNode(Node):
         self.declare_parameter("pole_ref_rad", 0.0)
         self.declare_parameter("capture_pole_angle_deg", 15.0)
         self.declare_parameter("capture_pole_vel_rad_s", 4.0)
+        self.declare_parameter("min_swing_up_time_sec", 2.0)
         self.declare_parameter("velocity_filter_alpha", 0.85)
         self.declare_parameter("voltage_slew_rate_v_per_s", 60.0)
         self.declare_parameter("swing_up_gain", 5.0)
@@ -46,6 +47,7 @@ class LqrControllerNode(Node):
         self.pole_ref = float(self.get_parameter("pole_ref_rad").value)
         self.capture_pole_angle = float(self.get_parameter("capture_pole_angle_deg").value) * math.pi / 180.0
         self.capture_pole_vel = float(self.get_parameter("capture_pole_vel_rad_s").value)
+        self.min_swing_up_time = float(self.get_parameter("min_swing_up_time_sec").value)
         self.vel_alpha = float(self.get_parameter("velocity_filter_alpha").value)
         self.voltage_slew_rate = float(self.get_parameter("voltage_slew_rate_v_per_s").value)
         self.swing_up_gain = float(self.get_parameter("swing_up_gain").value)
@@ -57,6 +59,8 @@ class LqrControllerNode(Node):
         self.arm_vel = None
         self.pole_angle = None
         self.pole_vel = None
+        self.seen_arm_joint = False
+        self.seen_pole_joint = False
 
         self.arm_vel_filt = 0.0
         self.pole_vel_filt = 0.0
@@ -69,14 +73,12 @@ class LqrControllerNode(Node):
         self._state_ready_logged = False
 
         self.lqr_captured = False
+        self.start_time = time.monotonic()
 
         self.voltage_cmd_pub = self.create_publisher(Float64, "/rotary_pendulum/motor_voltage_cmd", 10)
         self.mode_pub = self.create_publisher(String, "/rotary_pendulum/control_mode", 10)
 
-        self.create_subscription(Float64, "/rotary_pendulum/arm_angle", self.arm_angle_cb, 20)
-        self.create_subscription(Float64, "/rotary_pendulum/arm_angular_velocity", self.arm_vel_cb, 20)
-        self.create_subscription(Float64, "/rotary_pendulum/pole_angle", self.pole_angle_cb, 20)
-        self.create_subscription(Float64, "/rotary_pendulum/pole_angular_velocity", self.pole_vel_cb, 20)
+        # Use joint_states as the single source of truth to avoid startup race/misaligned offsets.
         self.create_subscription(JointState, "/joint_states", self.joint_states_cb, 20)
 
         wall_clock = Clock(clock_type=ClockType.SYSTEM_TIME)
@@ -90,18 +92,6 @@ class LqrControllerNode(Node):
     @staticmethod
     def wrap_to_pi(angle: float) -> float:
         return math.atan2(math.sin(angle), math.cos(angle))
-
-    def arm_angle_cb(self, msg: Float64) -> None:
-        self.arm_angle = float(msg.data)
-
-    def arm_vel_cb(self, msg: Float64) -> None:
-        self.arm_vel = float(msg.data)
-
-    def pole_angle_cb(self, msg: Float64) -> None:
-        self.pole_angle = float(msg.data)
-
-    def pole_vel_cb(self, msg: Float64) -> None:
-        self.pole_vel = float(msg.data)
 
     def _find_joint_index(self, names: list[str], target: str):
         if target in names:
@@ -118,6 +108,7 @@ class LqrControllerNode(Node):
                 self.arm_angle = float(msg.position[ai])
             if ai < len(msg.velocity):
                 self.arm_vel = float(msg.velocity[ai])
+                self.seen_arm_joint = True
 
         pi = self._find_joint_index(msg.name, self.pole_joint_name)
         if pi is not None:
@@ -125,6 +116,7 @@ class LqrControllerNode(Node):
                 self.pole_angle = float(msg.position[pi]) + self.pole_offset
             if pi < len(msg.velocity):
                 self.pole_vel = float(msg.velocity[pi])
+                self.seen_pole_joint = True
 
     def _publish_mode(self) -> None:
         m = String()
@@ -138,7 +130,7 @@ class LqrControllerNode(Node):
             dt = 1.0 / self.control_rate_hz
         self.last_control_time = now
 
-        if None in (self.arm_angle, self.arm_vel, self.pole_angle, self.pole_vel):
+        if (not self.seen_arm_joint) or (not self.seen_pole_joint) or None in (self.arm_angle, self.arm_vel, self.pole_angle, self.pole_vel):
             if self.publish_zero_if_state_missing:
                 z = Float64()
                 z.data = 0.0
@@ -161,10 +153,12 @@ class LqrControllerNode(Node):
         arm_err = self.wrap_to_pi(self.arm_angle - self.arm_ref)
         pole_err = self.wrap_to_pi(self.pole_angle - self.pole_ref)
 
-        if (not self.lqr_captured) and (abs(pole_err) <= self.capture_pole_angle) and (abs(self.pole_vel_filt) <= self.capture_pole_vel):
+        forced_swing_up = (now - self.start_time) < self.min_swing_up_time
+
+        if (not forced_swing_up) and (not self.lqr_captured) and (abs(pole_err) <= self.capture_pole_angle) and (abs(self.pole_vel_filt) <= self.capture_pole_vel):
             self.lqr_captured = True
 
-        if self.lqr_captured:
+        if self.lqr_captured and (not forced_swing_up):
             x = [arm_err, self.arm_vel_filt, pole_err, self.pole_vel_filt]
             u = -sum(k_i * x_i for k_i, x_i in zip(self.k, x))
             self.last_mode = "LQR"

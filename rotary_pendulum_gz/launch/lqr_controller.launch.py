@@ -15,6 +15,7 @@ def generate_launch_description():
                 "control_rate_hz": 100.0,
                 "capture_pole_angle_deg": 15.0,
                 "capture_pole_vel_rad_s": 4.0,
+                "min_swing_up_time_sec": 2.0,
                 "velocity_filter_alpha": 0.85,
                 "voltage_slew_rate_v_per_s": 60.0,
                 "swing_up_gain": 5.0,
