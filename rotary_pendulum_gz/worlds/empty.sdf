@@ -43,7 +43,7 @@
     </model>
     <gui fullscreen="0">
       <camera name="pendulum_view">
-        <pose>-2.2 -1.6 1.8 0.0 0.2 0.72</pose>
+        <pose>-3.0 -2.0 1.9 0.0 0.18 0.58</pose>
       </camera>
     </gui>
   </world>

@@ -35,6 +35,8 @@ class PendulumInterfaceNode(Node):
 
         self.arm_angle_pub = self.create_publisher(Float64, "/rotary_pendulum/arm_angle", 10)
         self.pole_angle_pub = self.create_publisher(Float64, "/rotary_pendulum/pole_angle", 10)
+        self.arm_vel_pub = self.create_publisher(Float64, "/rotary_pendulum/arm_angular_velocity", 10)
+        self.pole_vel_pub = self.create_publisher(Float64, "/rotary_pendulum/pole_angular_velocity", 10)
         self.voltage_pub = self.create_publisher(Float64, "/rotary_pendulum/motor_voltage", 10)
         self.current_pub = self.create_publisher(Float64, "/rotary_pendulum/motor_current", 10)
         self.effort_cmd_pub = self.create_publisher(Float64MultiArray, "/arm_effort_controller/commands", 10)
@@ -58,6 +60,8 @@ class PendulumInterfaceNode(Node):
             i = name_to_index[self.pole_joint]
             if i < len(msg.position):
                 self.last_joint_pos[self.pole_joint] = msg.position[i]
+            if i < len(msg.velocity):
+                self.last_joint_vel[self.pole_joint] = msg.velocity[i]
 
         if self.arm_joint in self.last_joint_pos:
             arm_msg = Float64()
@@ -68,6 +72,16 @@ class PendulumInterfaceNode(Node):
             pole_msg = Float64()
             pole_msg.data = self.last_joint_pos[self.pole_joint] + self.pole_offset
             self.pole_angle_pub.publish(pole_msg)
+
+        if self.arm_joint in self.last_joint_vel:
+            arm_vel_msg = Float64()
+            arm_vel_msg.data = self.last_joint_vel[self.arm_joint]
+            self.arm_vel_pub.publish(arm_vel_msg)
+
+        if self.pole_joint in self.last_joint_vel:
+            pole_vel_msg = Float64()
+            pole_vel_msg.data = self.last_joint_vel[self.pole_joint]
+            self.pole_vel_pub.publish(pole_vel_msg)
 
     def voltage_cmd_cb(self, msg: Float64) -> None:
         arm_vel = self.last_joint_vel.get(self.arm_joint, 0.0)
