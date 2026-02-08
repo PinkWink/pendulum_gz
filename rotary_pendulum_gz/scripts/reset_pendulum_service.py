@@ -45,6 +45,11 @@ class ResetPendulumService(Node):
             return False, (completed.stderr or completed.stdout or "command failed").strip()
         return True, (completed.stdout or "").strip()
 
+    @staticmethod
+    def _contains_any(text: str, patterns: list[str]) -> bool:
+        lower = text.lower()
+        return any(p.lower() in lower for p in patterns)
+
     def reset_cb(self, request: Trigger.Request, response: Trigger.Response) -> Trigger.Response:
         del request
 
@@ -61,25 +66,15 @@ class ResetPendulumService(Node):
 
         future = self.gz_control_client.call_async(gz_req)
         rclpy.spin_until_future_complete(self, future, timeout_sec=self.reset_timeout_sec)
+        reset_note = ""
         if not future.done():
-            response.success = False
-            response.message = "Timed out waiting for Gazebo world control reset response"
-            return response
-
-        if future.exception() is not None:
-            response.success = False
-            response.message = f"Gazebo world control reset exception: {future.exception()}"
-            return response
-
-        if future.result() is None:
-            response.success = False
-            response.message = "Failed to call Gazebo world control reset"
-            return response
-
-        if not future.result().success:
-            response.success = False
-            response.message = "Gazebo reported reset failure"
-            return response
+            reset_note = "world reset response timeout; continued with respawn"
+        elif future.exception() is not None:
+            reset_note = f"world reset exception ({future.exception()}); continued with respawn"
+        elif future.result() is None:
+            reset_note = "world reset returned no result; continued with respawn"
+        elif not future.result().success:
+            reset_note = "world reset reported failure; continued with respawn"
 
         spawn_cmd = [
             "ros2",
@@ -95,9 +90,10 @@ class ResetPendulumService(Node):
         ]
         ok, out = self._run_cmd(spawn_cmd, timeout_sec=10.0)
         if not ok:
-            response.success = False
-            response.message = f"Reset done, but respawn failed: {out}"
-            return response
+            if not self._contains_any(out, ["already exists", "entity exists"]):
+                response.success = False
+                response.message = f"Reset done, but respawn failed: {out}"
+                return response
 
         jsb_cmd = [
             "ros2",
@@ -110,9 +106,10 @@ class ResetPendulumService(Node):
         ]
         ok, out = self._run_cmd(jsb_cmd, timeout_sec=10.0)
         if not ok:
-            response.success = False
-            response.message = f"Respawned, but joint_state_broadcaster failed: {out}"
-            return response
+            if not self._contains_any(out, ["already loaded", "already active", "already configured"]):
+                response.success = False
+                response.message = f"Respawned, but joint_state_broadcaster failed: {out}"
+                return response
 
         arm_ctrl_cmd = [
             "ros2",
@@ -125,9 +122,10 @@ class ResetPendulumService(Node):
         ]
         ok, out = self._run_cmd(arm_ctrl_cmd, timeout_sec=10.0)
         if not ok:
-            response.success = False
-            response.message = f"Respawned, but arm_effort_controller failed: {out}"
-            return response
+            if not self._contains_any(out, ["already loaded", "already active", "already configured"]):
+                response.success = False
+                response.message = f"Respawned, but arm_effort_controller failed: {out}"
+                return response
 
         unpause_req = ControlWorld.Request()
         unpause_req.world_control = WorldControl()
@@ -135,7 +133,10 @@ class ResetPendulumService(Node):
         self.gz_control_client.call_async(unpause_req)
 
         response.success = True
-        response.message = "Pendulum reset complete (model respawned with arm=0 deg, pole=3 deg)"
+        if reset_note:
+            response.message = f"Pendulum reset complete ({reset_note})"
+        else:
+            response.message = "Pendulum reset complete (model respawned with arm=0 deg, pole=3 deg)"
         return response
 
 

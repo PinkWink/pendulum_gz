@@ -27,6 +27,10 @@ def generate_launch_description():
         name="GZ_SIM_SYSTEM_PLUGIN_PATH",
         value=["/opt/ros/jazzy/lib", ":", EnvironmentVariable("GZ_SIM_SYSTEM_PLUGIN_PATH", default_value="")],
     )
+    ld_library_path = SetEnvironmentVariable(
+        name="LD_LIBRARY_PATH",
+        value=["/opt/ros/jazzy/lib", ":", EnvironmentVariable("LD_LIBRARY_PATH", default_value="")],
+    )
 
     robot_state_publisher = Node(
         package="robot_state_publisher",
@@ -93,6 +97,7 @@ def generate_launch_description():
     return LaunchDescription(
         [
             gz_plugin_path,
+            ld_library_path,
             gz_sim,
             robot_state_publisher,
             bridge,
