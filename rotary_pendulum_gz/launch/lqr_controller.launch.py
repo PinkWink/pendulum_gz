@@ -11,7 +11,7 @@ def generate_launch_description():
             {
                 "use_sim_time": False,
                 "k": [12.0, 2.0, 160.0, 20.0],
-                "swing_up_voltage_limit": 18.0,
+                "swing_up_voltage_limit": 20.0,
                 "lqr_voltage_limit": 24.0,
                 "control_rate_hz": 100.0,
                 "capture_pole_angle_deg": 35.0,
@@ -27,10 +27,12 @@ def generate_launch_description():
                 "min_swing_up_time_sec": 2.0,
                 "velocity_filter_alpha": 0.85,
                 "voltage_slew_rate_v_per_s": 200.0,
-                "swing_up_gain": 14.0,
+                "swing_up_gain": 20.0,
                 "swing_up_damping": 0.15,
                 "swing_up_arm_centering_gain": 1.0,
-                "swing_up_min_voltage": 6.0,
+                "swing_up_min_voltage": 8.0,
+                "swing_up_arm_limit_deg": 80.0,
+                "swing_up_arm_limit_recovery_gain": 12.0,
             }
         ],
     )

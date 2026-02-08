@@ -36,7 +36,9 @@ class LqrControllerNode(Node):
         self.declare_parameter("swing_up_gain", 14.0)
         self.declare_parameter("swing_up_damping", 0.15)
         self.declare_parameter("swing_up_arm_centering_gain", 1.0)
-        self.declare_parameter("swing_up_min_voltage", 6.0)
+        self.declare_parameter("swing_up_min_voltage", 8.0)
+        self.declare_parameter("swing_up_arm_limit_deg", 80.0)
+        self.declare_parameter("swing_up_arm_limit_recovery_gain", 12.0)
         self.declare_parameter("pendulum_mass", 0.15)
         self.declare_parameter("pendulum_com_length", 0.5)
 
@@ -67,6 +69,8 @@ class LqrControllerNode(Node):
         self.swing_up_damping = float(self.get_parameter("swing_up_damping").value)
         self.swing_up_arm_centering_gain = float(self.get_parameter("swing_up_arm_centering_gain").value)
         self.swing_up_min_voltage = float(self.get_parameter("swing_up_min_voltage").value)
+        self.swing_up_arm_limit = float(self.get_parameter("swing_up_arm_limit_deg").value) * math.pi / 180.0
+        self.swing_up_arm_limit_recovery_gain = float(self.get_parameter("swing_up_arm_limit_recovery_gain").value)
         self.pendulum_mass = float(self.get_parameter("pendulum_mass").value)
         self.pendulum_com_length = float(self.get_parameter("pendulum_com_length").value)
 
@@ -230,6 +234,14 @@ class LqrControllerNode(Node):
             )
             if abs(u) < self.swing_up_min_voltage and abs(pole_err) > self.capture_pole_angle:
                 u = self.swing_up_min_voltage * (1.0 if u >= 0.0 else -1.0)
+
+            # Keep arm angle within +/- limit during swing-up.
+            if abs(arm_err) > self.swing_up_arm_limit:
+                over = abs(arm_err) - self.swing_up_arm_limit
+                u = (
+                    -self.swing_up_arm_limit_recovery_gain * math.copysign(over, arm_err)
+                    - self.swing_up_damping * self.arm_vel_filt
+                )
             self.last_mode = "SWING_UP"
             mode_voltage_limit = self.swing_up_voltage_limit
 
