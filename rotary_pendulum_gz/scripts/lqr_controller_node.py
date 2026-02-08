@@ -20,7 +20,7 @@ class LqrControllerNode(Node):
         self.declare_parameter("publish_zero_if_state_missing", True)
         self.declare_parameter("arm_joint_name", "arm_joint")
         self.declare_parameter("pole_joint_name", "pole_joint")
-        self.declare_parameter("pole_initial_offset_deg", 0.0)
+        self.declare_parameter("pole_initial_offset_deg", -180.0)
         self.declare_parameter("arm_ref_rad", 0.0)
         self.declare_parameter("pole_ref_rad", 0.0)
         self.declare_parameter("capture_pole_angle_deg", 15.0)
