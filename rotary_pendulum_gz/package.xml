@@ -18,8 +18,10 @@
   <depend>robot_state_publisher</depend>
   <depend>ros2_control</depend>
   <depend>ros_gz_bridge</depend>
+  <depend>ros_gz_interfaces</depend>
   <depend>ros_gz_sim</depend>
   <depend>sensor_msgs</depend>
+  <depend>std_srvs</depend>
   <depend>std_msgs</depend>
   <depend>xacro</depend>
 

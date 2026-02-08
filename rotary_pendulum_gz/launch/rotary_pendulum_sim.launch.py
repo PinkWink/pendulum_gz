@@ -44,6 +44,7 @@ def generate_launch_description():
         arguments=[
             "/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock",
             "/world/default/model/rotary_inverted_pendulum/joint_state@sensor_msgs/msg/JointState[gz.msgs.Model",
+            "/world/default/control@ros_gz_interfaces/srv/ControlWorld",
         ],
         remappings=[
             ("/world/default/model/rotary_inverted_pendulum/joint_state", "/joint_states"),
@@ -71,6 +72,13 @@ def generate_launch_description():
         parameters=[{"use_sim_time": True}],
     )
 
+    reset_service = Node(
+        package="rotary_pendulum_gz",
+        executable="reset_pendulum_service.py",
+        output="screen",
+        parameters=[{"use_sim_time": True}],
+    )
+
     delayed_spawn = TimerAction(period=2.0, actions=[spawn_robot])
     delayed_controllers = TimerAction(
         period=5.0,
@@ -85,5 +93,6 @@ def generate_launch_description():
             delayed_spawn,
             delayed_controllers,
             pendulum_interface,
+            reset_service,
         ]
     )

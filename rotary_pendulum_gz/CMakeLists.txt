@@ -9,7 +9,9 @@ install(
 )
 
 install(
-  PROGRAMS scripts/pendulum_interface_node.py
+  PROGRAMS
+    scripts/pendulum_interface_node.py
+    scripts/reset_pendulum_service.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
