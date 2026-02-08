@@ -16,7 +16,7 @@ class ResetPendulumService(Node):
         self.declare_parameter("world_control_service", "/world/default/control")
         self.declare_parameter("model_name", "rotary_inverted_pendulum")
         self.declare_parameter("spawn_z", 0.0)
-        self.declare_parameter("reset_timeout_sec", 3.0)
+        self.declare_parameter("reset_timeout_sec", 10.0)
         world_service = str(self.get_parameter("world_control_service").value)
         self.model_name = str(self.get_parameter("model_name").value)
         self.spawn_z = float(self.get_parameter("spawn_z").value)
@@ -61,6 +61,15 @@ class ResetPendulumService(Node):
 
         future = self.gz_control_client.call_async(gz_req)
         rclpy.spin_until_future_complete(self, future, timeout_sec=self.reset_timeout_sec)
+        if not future.done():
+            response.success = False
+            response.message = "Timed out waiting for Gazebo world control reset response"
+            return response
+
+        if future.exception() is not None:
+            response.success = False
+            response.message = f"Gazebo world control reset exception: {future.exception()}"
+            return response
 
         if future.result() is None:
             response.success = False

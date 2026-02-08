@@ -1,6 +1,6 @@
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess, TimerAction
-from launch.substitutions import Command, PathJoinSubstitution
+from launch.actions import ExecuteProcess, SetEnvironmentVariable, TimerAction
+from launch.substitutions import Command, EnvironmentVariable, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
 
@@ -21,6 +21,11 @@ def generate_launch_description():
     gz_sim = ExecuteProcess(
         cmd=["gz", "sim", "-r", world],
         output="screen",
+    )
+
+    gz_plugin_path = SetEnvironmentVariable(
+        name="GZ_SIM_SYSTEM_PLUGIN_PATH",
+        value=["/opt/ros/jazzy/lib", ":", EnvironmentVariable("GZ_SIM_SYSTEM_PLUGIN_PATH", default_value="")],
     )
 
     robot_state_publisher = Node(
@@ -87,6 +92,7 @@ def generate_launch_description():
 
     return LaunchDescription(
         [
+            gz_plugin_path,
             gz_sim,
             robot_state_publisher,
             bridge,
