@@ -6,8 +6,6 @@ import time
 import rclpy
 from rclpy.clock import Clock, ClockType
 from rclpy.node import Node
-from rclpy.qos import qos_profile_sensor_data
-from sensor_msgs.msg import JointState
 from std_msgs.msg import Float64, String
 
 
@@ -17,24 +15,18 @@ class LqrControllerNode(Node):
 
         self.declare_parameter("k", [2.0, 0.3, 35.0, 3.0])
         self.declare_parameter("swing_up_voltage_limit", 10.0)
-        self.declare_parameter("lqr_voltage_limit", 4.0)
+        self.declare_parameter("lqr_voltage_limit", 12.0)
         self.declare_parameter("control_rate_hz", 100.0)
         self.declare_parameter("publish_zero_if_state_missing", True)
-        self.declare_parameter("arm_joint_name", "arm_joint")
-        self.declare_parameter("pole_joint_name", "pole_joint")
-        self.declare_parameter("pole_initial_offset_deg", -180.0)
         self.declare_parameter("arm_ref_rad", 0.0)
         self.declare_parameter("pole_ref_rad", 0.0)
-        self.declare_parameter("capture_pole_angle_deg", 15.0)
-        self.declare_parameter("capture_pole_vel_rad_s", 4.0)
-        self.declare_parameter("capture_arm_angle_deg", 80.0)
-        self.declare_parameter("capture_arm_vel_rad_s", 6.0)
-        self.declare_parameter("exit_pole_angle_deg", 35.0)
-        self.declare_parameter("exit_pole_vel_rad_s", 8.0)
-        self.declare_parameter("exit_arm_angle_deg", 130.0)
-        self.declare_parameter("exit_arm_vel_rad_s", 12.0)
-        self.declare_parameter("enter_lqr_hold_time_sec", 0.25)
-        self.declare_parameter("exit_lqr_hold_time_sec", 0.25)
+        self.declare_parameter("capture_pole_angle_deg", 12.0)
+        self.declare_parameter("capture_pole_vel_rad_s", 2.5)
+        self.declare_parameter("capture_arm_vel_rad_s", 4.0)
+        self.declare_parameter("exit_pole_angle_deg", 50.0)
+        self.declare_parameter("exit_pole_vel_rad_s", 10.0)
+        self.declare_parameter("enter_lqr_hold_time_sec", 0.35)
+        self.declare_parameter("exit_lqr_hold_time_sec", 0.60)
         self.declare_parameter("min_swing_up_time_sec", 2.0)
         self.declare_parameter("velocity_filter_alpha", 0.85)
         self.declare_parameter("voltage_slew_rate_v_per_s", 60.0)
@@ -51,19 +43,13 @@ class LqrControllerNode(Node):
         self.lqr_voltage_limit = float(self.get_parameter("lqr_voltage_limit").value)
         self.control_rate_hz = float(self.get_parameter("control_rate_hz").value)
         self.publish_zero_if_state_missing = bool(self.get_parameter("publish_zero_if_state_missing").value)
-        self.arm_joint_name = str(self.get_parameter("arm_joint_name").value)
-        self.pole_joint_name = str(self.get_parameter("pole_joint_name").value)
-        self.pole_offset = float(self.get_parameter("pole_initial_offset_deg").value) * math.pi / 180.0
         self.arm_ref = float(self.get_parameter("arm_ref_rad").value)
         self.pole_ref = float(self.get_parameter("pole_ref_rad").value)
         self.capture_pole_angle = float(self.get_parameter("capture_pole_angle_deg").value) * math.pi / 180.0
         self.capture_pole_vel = float(self.get_parameter("capture_pole_vel_rad_s").value)
-        self.capture_arm_angle = float(self.get_parameter("capture_arm_angle_deg").value) * math.pi / 180.0
         self.capture_arm_vel = float(self.get_parameter("capture_arm_vel_rad_s").value)
         self.exit_pole_angle = float(self.get_parameter("exit_pole_angle_deg").value) * math.pi / 180.0
         self.exit_pole_vel = float(self.get_parameter("exit_pole_vel_rad_s").value)
-        self.exit_arm_angle = float(self.get_parameter("exit_arm_angle_deg").value) * math.pi / 180.0
-        self.exit_arm_vel = float(self.get_parameter("exit_arm_vel_rad_s").value)
         self.enter_lqr_hold_time = float(self.get_parameter("enter_lqr_hold_time_sec").value)
         self.exit_lqr_hold_time = float(self.get_parameter("exit_lqr_hold_time_sec").value)
         self.min_swing_up_time = float(self.get_parameter("min_swing_up_time_sec").value)
@@ -78,8 +64,10 @@ class LqrControllerNode(Node):
         self.arm_vel = None
         self.pole_angle = None
         self.pole_vel = None
-        self.seen_arm_joint = False
-        self.seen_pole_joint = False
+        self.seen_arm_angle = False
+        self.seen_arm_vel = False
+        self.seen_pole_angle = False
+        self.seen_pole_vel = False
 
         self.arm_vel_filt = 0.0
         self.pole_vel_filt = 0.0
@@ -99,8 +87,11 @@ class LqrControllerNode(Node):
         self.voltage_cmd_pub = self.create_publisher(Float64, "/rotary_pendulum/motor_voltage_cmd", 10)
         self.mode_pub = self.create_publisher(String, "/rotary_pendulum/control_mode", 10)
 
-        # Use joint_states as the single source of truth to avoid startup race/misaligned offsets.
-        self.create_subscription(JointState, "/joint_states", self.joint_states_cb, qos_profile_sensor_data)
+        # Use already-published interface topics for robust startup behavior.
+        self.create_subscription(Float64, "/rotary_pendulum/arm_angle", self.arm_angle_cb, 10)
+        self.create_subscription(Float64, "/rotary_pendulum/arm_angular_velocity", self.arm_vel_cb, 10)
+        self.create_subscription(Float64, "/rotary_pendulum/pole_angle", self.pole_angle_cb, 10)
+        self.create_subscription(Float64, "/rotary_pendulum/pole_angular_velocity", self.pole_vel_cb, 10)
 
         wall_clock = Clock(clock_type=ClockType.SYSTEM_TIME)
         self.create_timer(1.0 / self.control_rate_hz, self.control_loop, clock=wall_clock)
@@ -115,30 +106,21 @@ class LqrControllerNode(Node):
     def wrap_to_pi(angle: float) -> float:
         return math.atan2(math.sin(angle), math.cos(angle))
 
-    def _find_joint_index(self, names: list[str], target: str):
-        if target in names:
-            return names.index(target)
-        for i, name in enumerate(names):
-            if name.endswith("/" + target) or name.endswith("::" + target):
-                return i
-        return None
+    def arm_angle_cb(self, msg: Float64) -> None:
+        self.arm_angle = float(msg.data)
+        self.seen_arm_angle = True
 
-    def joint_states_cb(self, msg: JointState) -> None:
-        ai = self._find_joint_index(msg.name, self.arm_joint_name)
-        if ai is not None:
-            if ai < len(msg.position):
-                self.arm_angle = float(msg.position[ai])
-            if ai < len(msg.velocity):
-                self.arm_vel = float(msg.velocity[ai])
-                self.seen_arm_joint = True
+    def arm_vel_cb(self, msg: Float64) -> None:
+        self.arm_vel = float(msg.data)
+        self.seen_arm_vel = True
 
-        pi = self._find_joint_index(msg.name, self.pole_joint_name)
-        if pi is not None:
-            if pi < len(msg.position):
-                self.pole_angle = float(msg.position[pi]) + self.pole_offset
-            if pi < len(msg.velocity):
-                self.pole_vel = float(msg.velocity[pi])
-                self.seen_pole_joint = True
+    def pole_angle_cb(self, msg: Float64) -> None:
+        self.pole_angle = float(msg.data)
+        self.seen_pole_angle = True
+
+    def pole_vel_cb(self, msg: Float64) -> None:
+        self.pole_vel = float(msg.data)
+        self.seen_pole_vel = True
 
     def _publish_mode(self) -> None:
         m = String()
@@ -152,7 +134,13 @@ class LqrControllerNode(Node):
             dt = 1.0 / self.control_rate_hz
         self.last_control_time = now
 
-        if (not self.seen_arm_joint) or (not self.seen_pole_joint) or None in (self.arm_angle, self.arm_vel, self.pole_angle, self.pole_vel):
+        if (
+            (not self.seen_arm_angle)
+            or (not self.seen_arm_vel)
+            or (not self.seen_pole_angle)
+            or (not self.seen_pole_vel)
+            or None in (self.arm_angle, self.arm_vel, self.pole_angle, self.pole_vel)
+        ):
             if self.publish_zero_if_state_missing:
                 z = Float64()
                 z.data = 0.0
@@ -181,14 +169,11 @@ class LqrControllerNode(Node):
             (not forced_swing_up)
             and (abs(pole_err) <= self.capture_pole_angle)
             and (abs(self.pole_vel_filt) <= self.capture_pole_vel)
-            and (abs(arm_err) <= self.capture_arm_angle)
             and (abs(self.arm_vel_filt) <= self.capture_arm_vel)
         )
         must_exit_lqr = (
             (abs(pole_err) >= self.exit_pole_angle)
-            or (abs(self.pole_vel_filt) >= self.exit_pole_vel)
-            or (abs(arm_err) >= self.exit_arm_angle)
-            or (abs(self.arm_vel_filt) >= self.exit_arm_vel)
+            and (abs(self.pole_vel_filt) >= self.exit_pole_vel)
         )
 
         if not self.lqr_active:
