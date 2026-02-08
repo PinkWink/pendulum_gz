@@ -12,6 +12,8 @@ install(
   PROGRAMS
     scripts/pendulum_interface_node.py
     scripts/reset_pendulum_service.py
+    scripts/lqr_controller_node.py
+    scripts/state_plotter_node.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
