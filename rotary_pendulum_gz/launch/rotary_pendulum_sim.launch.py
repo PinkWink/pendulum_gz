@@ -94,7 +94,7 @@ def generate_launch_description():
         package="rotary_pendulum_gz",
         executable="pendulum_interface_node.py",
         output="screen",
-        parameters=[{"use_sim_time": True, "pole_initial_offset_deg": -180.0}],
+        parameters=[{"use_sim_time": True, "pole_initial_offset_deg": -180.0, "motor_resistance": 0.5, "back_emf_constant": 0.05, "torque_constant": 0.6, "max_effort": 30.0}],
     )
 
     reset_service = Node(
