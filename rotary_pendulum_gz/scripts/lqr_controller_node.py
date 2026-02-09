@@ -13,9 +13,9 @@ class LqrControllerNode(Node):
     def __init__(self) -> None:
         super().__init__("lqr_controller_node")
 
-        self.declare_parameter("k", [14.0, 2.5, 180.0, 24.0])
+        self.declare_parameter("k", [22.0, 4.0, 260.0, 36.0])
         self.declare_parameter("swing_up_voltage_limit", 24.0)
-        self.declare_parameter("lqr_voltage_limit", 24.0)
+        self.declare_parameter("lqr_voltage_limit", 28.0)
         self.declare_parameter("control_rate_hz", 150.0)
         self.declare_parameter("publish_zero_if_state_missing", True)
 
@@ -31,7 +31,7 @@ class LqrControllerNode(Node):
         self.declare_parameter("min_swing_up_time_sec", 0.8)
 
         self.declare_parameter("velocity_filter_alpha", 0.75)
-        self.declare_parameter("voltage_slew_rate_v_per_s", 400.0)
+        self.declare_parameter("voltage_slew_rate_v_per_s", 700.0)
 
         self.declare_parameter("swing_up_gain", 26.0)
         self.declare_parameter("swing_up_damping", 0.25)

@@ -10,9 +10,9 @@ def generate_launch_description():
         parameters=[
             {
                 "use_sim_time": False,
-                "k": [14.0, 2.5, 180.0, 24.0],
+                "k": [22.0, 4.0, 260.0, 36.0],
                 "swing_up_voltage_limit": 24.0,
-                "lqr_voltage_limit": 24.0,
+                "lqr_voltage_limit": 28.0,
                 "control_rate_hz": 150.0,
                 "lqr_enter_pole_angle_deg": 5.0,
                 "lqr_enter_pole_vel_rad_s": 1.2,
@@ -21,7 +21,7 @@ def generate_launch_description():
                 "swingup_rearm_pole_vel_rad_s": 0.15,
                 "min_swing_up_time_sec": 0.8,
                 "velocity_filter_alpha": 0.75,
-                "voltage_slew_rate_v_per_s": 400.0,
+                "voltage_slew_rate_v_per_s": 700.0,
                 "swing_up_gain": 26.0,
                 "swing_up_damping": 0.25,
                 "swing_up_arm_centering_gain": 4.0,
